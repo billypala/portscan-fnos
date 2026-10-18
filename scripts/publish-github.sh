@@ -41,9 +41,10 @@ else
 fi
 
 echo "==> 设置仓库简介与标签"
+# gh 的 StringSlice 参数接受逗号分隔列表
 "$GH" repo edit "$OWNER/$REPO" \
   --description "$DESC" \
-  --add-topic "$(echo "$TOPICS" | tr ',' ' ')"
+  --add-topic "$TOPICS"
 
 echo "==> 确认远程与推送状态"
 git remote get-url origin 2>/dev/null || true
