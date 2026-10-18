@@ -1,0 +1,5 @@
+#!/bin/bash
+
+### Called before the application is uninstalled.
+
+exit 0

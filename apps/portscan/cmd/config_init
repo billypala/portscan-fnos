@@ -1,0 +1,5 @@
+#!/bin/bash
+
+### Called before the user changes environment variables.
+
+exit 0

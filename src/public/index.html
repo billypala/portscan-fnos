@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<title>端口扫描</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f7f7f8;
+    --bg-sunken: #f1f1f3;
+    --text: #16181c;
+    --text-sub: #6b7280;
+    --text-mute: #9ca3af;
+    --border: #e2e4e8;
+    --border-strong: #c9ccd2;
+    --accent: #2f6bf0;
+    --accent-hover: #2560e0;
+    --accent-soft: #eaf1fe;
+    --ok: #12a150;
+    --danger: #e24b4a;
+    --shadow: 0 8px 28px rgba(16, 18, 24, .10);
+    --radius: 10px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181b;
+      --bg-soft: #1e2024;
+      --bg-sunken: #232529;
+      --text: #eceef1;
+      --text-sub: #a2a8b2;
+      --text-mute: #757b85;
+      --border: #2e3137;
+      --border-strong: #41454d;
+      --accent: #4d84f7;
+      --accent-hover: #6b9bff;
+      --accent-soft: #1c2942;
+      --ok: #2fbf63;
+      --danger: #f0655f;
+      --shadow: 0 8px 28px rgba(0, 0, 0, .45);
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input { font-family: inherit; }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 8px;
+    height: 52px; padding: 0 8px 0 4px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; border-radius: 8px;
+    color: var(--text); flex: none;
+  }
+  .icon-btn:hover { background: var(--bg-sunken); }
+  .icon-btn:active { background: var(--border); }
+  .topbar h1 {
+    flex: 1; margin: 0; font-size: 17px; font-weight: 500; text-align: center;
+    letter-spacing: .02em;
+  }
+
+  /* ---------- 主体 ---------- */
+  .main { padding: 4px 0 32px; }
+
+  .section { padding: 20px 24px; }
+  .section + .section { border-top: 1px solid var(--border); }
+
+  .field { margin-bottom: 20px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: block; margin-bottom: 8px;
+    font-size: 14px; font-weight: 500; color: var(--text-sub);
+  }
+  .field input {
+    width: 100%; height: 44px; padding: 0 14px;
+    font-size: 16px; color: var(--text);
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    outline: none;
+    transition: border-color .15s, background .15s;
+  }
+  .field input::placeholder { color: var(--text-mute); }
+  .field input:hover { border-color: var(--border-strong); }
+  .field input:focus {
+    border-color: var(--accent);
+    background: var(--bg);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .hint { margin-top: 6px; font-size: 12px; color: var(--text-mute); }
+  .hint.warn { color: var(--danger); }
+
+  .scan-btn {
+    width: 100%; height: 50px;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff; font-size: 16px; font-weight: 500;
+    transition: background .15s, opacity .15s;
+  }
+  .scan-btn:hover:not(:disabled) { background: var(--accent-hover); }
+  .scan-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+  /* ---------- 结果 ---------- */
+  .result-head {
+    display: flex; align-items: flex-start; gap: 12px;
+    margin-bottom: 18px;
+  }
+  .result-head h2 {
+    flex: 1; margin: 0; font-size: 16px; font-weight: 500; color: var(--text-sub);
+  }
+  .ghost-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 12px; flex: none;
+    font-size: 13px; color: var(--text-sub);
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .ghost-btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); background: var(--bg-sunken); }
+  .ghost-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .ghost-btn.ok { color: var(--ok); border-color: var(--ok); background: transparent; }
+
+  .scanning { color: var(--text-mute); font-size: 15px; word-break: break-all; }
+  .progress {
+    margin-top: 12px; height: 4px; border-radius: 2px;
+    background: var(--bg-sunken); overflow: hidden;
+  }
+  .progress i {
+    display: block; height: 100%; width: 0;
+    background: var(--accent); border-radius: 2px;
+    transition: width .2s linear;
+  }
+
+  /* ---------- 端口方框 ---------- */
+  .host-group { margin-bottom: 14px; }
+  .host-group:last-child { margin-bottom: 0; }
+  .host-label {
+    margin-bottom: 8px; font-size: 12px; color: var(--text-mute);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .chip {
+    display: inline-flex; align-items: center;
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--bg-soft);
+    color: var(--text);
+    font-size: 15px; font-weight: 500;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    user-select: none;
+    transition: border-color .15s, background .15s, transform .1s;
+  }
+  .chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .chip:active { transform: scale(.97); }
+  .chip .svc { color: var(--text-sub); font-weight: 400; }
+
+  /* 用户自定义过备注的端口：虚线边框 + 强调色，一眼区分 */
+  .chip.custom {
+    border-style: dashed;
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .chip.custom .svc { color: var(--accent); }
+
+  /* 编辑态输入框 */
+  .chip-edit {
+    padding: 5px 8px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px; font-weight: 500;
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .chips-hint { margin-top: 12px; font-size: 12px; color: var(--text-mute); }
+
+  .meta {
+    margin-top: 14px; font-size: 12px; color: var(--text-mute);
+    display: flex; flex-wrap: wrap; gap: 4px 16px;
+  }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 34px 12px; text-align: center;
+    color: var(--text-mute);
+  }
+  .empty-state svg { opacity: .45; }
+  .empty-state p { margin: 0; font-size: 14px; }
+
+  /* ---------- 抽屉 ---------- */
+  .mask {
+    position: fixed; inset: 0; z-index: 40;
+    background: rgba(0, 0, 0, .35);
+    opacity: 0; pointer-events: none; transition: opacity .22s;
+  }
+  .mask.open { opacity: 1; pointer-events: auto; }
+
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 50;
+    width: min(420px, 92vw);
+    display: flex; flex-direction: column;
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    transform: translateX(100%);
+    transition: transform .24s cubic-bezier(.32, .72, 0, 1);
+  }
+  .drawer.open { transform: translateX(0); }
+
+  .drawer-head {
+    display: flex; align-items: center; gap: 8px;
+    height: 52px; padding: 0 8px 0 16px; flex: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .drawer-head h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 500; }
+  .drawer-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  .hist-item {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hist-row { display: flex; align-items: flex-start; gap: 8px; }
+  .hist-main { flex: 1; min-width: 0; }
+  .hist-target {
+    font-size: 15px; font-weight: 500; word-break: break-all;
+  }
+  .hist-ports { margin-top: 8px; }
+  .hist-ports .chip { font-size: 13px; padding: 3px 7px; border-radius: 6px; }
+  .hist-time { margin-top: 8px; font-size: 12px; color: var(--text-mute); }
+  .hist-actions { display: flex; gap: 4px; flex: none; }
+  .mini-btn {
+    width: 30px; height: 30px; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-mute);
+  }
+  .mini-btn:hover { background: var(--bg-sunken); color: var(--text); }
+  .mini-btn.danger:hover { color: var(--danger); }
+
+  /* ---------- 弹窗 ---------- */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(0, 0, 0, .4);
+  }
+  .modal-mask[hidden] { display: none; }
+  .modal {
+    width: min(340px, 100%);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .modal-body { padding: 24px 24px 8px; font-size: 16px; text-align: center; }
+  .modal-foot { padding: 8px 12px 12px; display: flex; justify-content: flex-end; }
+  .modal-foot button {
+    height: 38px; padding: 0 20px; border-radius: 8px;
+    font-size: 15px; font-weight: 500; color: var(--accent);
+  }
+  .modal-foot button:hover { background: var(--accent-soft); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 40px; z-index: 70;
+    transform: translateX(-50%) translateY(12px);
+    max-width: 82vw; padding: 10px 18px;
+    background: var(--text); color: var(--bg);
+    border-radius: 8px; font-size: 14px;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: .95; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- 响应式 ---------- */
+  @media (max-width: 640px) {
+    .section { padding: 16px 16px; }
+    .chip { font-size: 14px; padding: 5px 9px; }
+    .topbar h1 { font-size: 16px; }
+  }
+  @media (min-width: 1100px) {
+    .main { max-width: 760px; margin: 0 auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <button class="icon-btn" id="btnBack" title="返回" aria-label="返回">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <h1>端口扫描</h1>
+  <button class="icon-btn" id="btnHistory" title="历史扫描记录" aria-label="历史扫描记录">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>
+      <circle cx="12" cy="12" r="3.2"/><path d="M12 9.6V12l1.8 1.2"/>
+    </svg>
+  </button>
+</header>
+
+<main class="main">
+  <section class="section">
+    <div class="field">
+      <label for="inputTarget">IP地址/网址</label>
+      <input id="inputTarget" type="text" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="正在检测本机 IP…" />
+      <div class="hint" id="hintTarget">支持：192.168.5.7 · 192.168.5.0/24 · 192.168.5.1-192.168.5.20 · example.com</div>
+    </div>
+
+    <div class="field">
+      <label for="inputPorts">端口范围</label>
+      <input id="inputPorts" type="text" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="全端口范围 1-65535" />
+      <div class="hint" id="hintPorts">留空扫描全部端口；也支持 80,443,8000-8100 格式</div>
+    </div>
+
+    <button class="scan-btn" id="btnScan">扫描</button>
+  </section>
+
+  <section class="section">
+    <div class="result-head">
+      <h2>扫描结果</h2>
+      <button class="ghost-btn" id="btnCopy" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="12" height="12" rx="2.4"/>
+          <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+        </svg>
+        <span id="copyLabel">复制</span>
+      </button>
+    </div>
+
+    <div id="resultBody">
+      <div class="empty-state">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        <p>填写目标后点击扫描</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="mask" id="drawerMask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <h2>历史扫描记录</h2>
+    <button class="ghost-btn" id="btnClearAll">清空</button>
+    <button class="icon-btn" id="btnCloseDrawer" title="关闭" aria-label="关闭">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<div class="modal-mask" id="modalMask" hidden>
+  <div class="modal">
+    <div class="modal-body" id="modalText">扫描完成，已保存扫描记录</div>
+    <div class="modal-foot"><button id="modalOk">确认</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var BASE = '/app/portscan';
+  var API = BASE + '/api';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var inputTarget = $('inputTarget');
+  var inputPorts = $('inputPorts');
+  var hintTarget = $('hintTarget');
+  var btnScan = $('btnScan');
+  var btnCopy = $('btnCopy');
+  var copyLabel = $('copyLabel');
+  var resultBody = $('resultBody');
+  var drawer = $('drawer');
+  var drawerMask = $('drawerMask');
+  var drawerBody = $('drawerBody');
+  var toastEl = $('toast');
+  var modalMask = $('modalMask');
+  var modalText = $('modalText');
+
+  var state = {
+    scanning: false,
+    es: null,
+    network: null,
+    result: null,
+    history: [],
+    labels: {}       // { 端口号: 备注 }，服务端持久化，全局生效
+  };
+
+  // ---------- 网络层 ----------
+
+  function api(path, options) {
+    return fetch(API + path, Object.assign({
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin'
+    }, options || {})).then(function (res) {
+      return res.json().catch(function () { return { ok: false, error: '响应解析失败' }; });
+    });
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
+  }
+
+  function showModal(text) {
+    modalText.textContent = text;
+    modalMask.hidden = false;
+  }
+  function hideModal() { modalMask.hidden = true; }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // ---------- 复制（三级降级） ----------
+  // HTTP 非安全上下文下 navigator.clipboard 为 undefined，必须降级，
+  // 否则 clipboard.writeText 抛 TypeError 被静默吞掉，UI 显示成功实际没复制。
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+
+    var active = document.activeElement;
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+
+    document.body.removeChild(ta);
+    if (active && active.focus) { try { active.focus(); } catch (e) { /* ignore */ } }
+    return ok;
+  }
+
+  function copyText(text) {
+    return new Promise(function (resolve) {
+      if (!text) { resolve(false); return; }
+
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(
+          function () { resolve(true); },
+          function () { resolve(fallbackCopy(text)); }
+        );
+        return;
+      }
+      resolve(fallbackCopy(text));
+    });
+  }
+
+  // ---------- 端口标签 ----------
+
+  // 显示名：用户备注优先，其次内置服务名
+  function portName(item) {
+    var custom = state.labels[item.port];
+    if (custom) return { text: custom, custom: true };
+    if (item.service) return { text: item.service, custom: false };
+    return { text: '', custom: false };
+  }
+
+  function chipHtml(item) {
+    var n = portName(item);
+    return '<button type="button" class="chip' + (n.custom ? ' custom' : '') + '"' +
+      ' data-port="' + item.port + '" data-host="' + esc(item.host) + '"' +
+      ' title="双击可修改该端口备注">' +
+      '<span class="num">' + item.port + '</span>' +
+      (n.text ? '<span class="svc">(' + esc(n.text) + ')</span>' : '') +
+      '</button>';
+  }
+
+  // 多个主机时按主机分组，单主机不显示分组标题
+  function chipsHtml(openPorts) {
+    if (!openPorts || !openPorts.length) {
+      return '<div class="chips"><span class="scanning">无（该范围内未发现开放端口）</span></div>';
+    }
+
+    var hosts = [];
+    var byHost = {};
+    openPorts.forEach(function (it) {
+      if (!byHost[it.host]) { byHost[it.host] = []; hosts.push(it.host); }
+      byHost[it.host].push(it);
+    });
+
+    if (hosts.length <= 1) {
+      return '<div class="chips">' + openPorts.map(chipHtml).join('') + '</div>';
+    }
+
+    return hosts.map(function (h) {
+      return '<div class="host-group">' +
+        '<div class="host-label">' + esc(h) + '　' + byHost[h].length + ' 个端口</div>' +
+        '<div class="chips">' + byHost[h].map(chipHtml).join('') + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function openTextOf(openPorts) {
+    if (!openPorts || !openPorts.length) return '无';
+    return openPorts.map(function (it) {
+      var n = portName(it);
+      return n.text ? it.port + '(' + n.text + ')' : String(it.port);
+    }).join(', ');
+  }
+
+  function buildCopyText(record) {
+    if (!record) return '';
+    return [
+      '目标：' + record.target,
+      '端口范围：' + record.portSpec,
+      '耗时：' + (record.elapsedMs / 1000).toFixed(1) + 's',
+      '已扫描：' + record.scanned + ' / ' + record.total,
+      '已打开的端口：' + openTextOf(record.openPorts)
+    ].join('\n');
+  }
+
+  btnCopy.addEventListener('click', function () {
+    if (!state.result) return;
+    copyText(buildCopyText(state.result)).then(function (ok) {
+      if (ok) {
+        copyLabel.textContent = '已复制';
+        btnCopy.classList.add('ok');
+        setTimeout(function () {
+          copyLabel.textContent = '复制';
+          btnCopy.classList.remove('ok');
+        }, 1800);
+        toast('扫描结果已复制');
+      } else {
+        showModal('当前环境不支持自动复制，请手动选择结果文本复制');
+      }
+    });
+  });
+
+  // ---------- 结果渲染 ----------
+
+  function renderScanning(scanned, total, openCount) {
+    var pct = total > 0 ? Math.round((scanned / total) * 100) : 0;
+    resultBody.innerHTML =
+      '<div class="scanning">正在扫描的端口　已扫描 ' + scanned + ' / ' + total +
+      '　命中 ' + openCount + '</div>' +
+      '<div class="progress"><i style="width:' + pct + '%"></i></div>';
+  }
+
+  function renderDone(record) {
+    state.result = record;
+    btnCopy.disabled = false;
+
+    var count = record.openPorts ? record.openPorts.length : 0;
+
+    resultBody.innerHTML =
+      '<div class="scanning">正在扫描的端口</div>' +
+      '<div style="margin-top:10px">' + chipsHtml(record.openPorts) + '</div>' +
+      (count ? '<div class="chips-hint">双击端口方框可修改备注（如把 21 标注为「FTP」），自动保存并应用到所有扫描</div>' : '') +
+      '<div class="meta">' +
+        '<span>目标 ' + esc(record.target) + '</span>' +
+        '<span>范围 ' + esc(record.portSpec) + '</span>' +
+        '<span>命中 ' + count + ' 个</span>' +
+        '<span>耗时 ' + (record.elapsedMs / 1000).toFixed(1) + 's</span>' +
+      '</div>';
+  }
+
+  function renderIdle() {
+    state.result = null;
+    btnCopy.disabled = true;
+    resultBody.innerHTML =
+      '<div class="empty-state">' +
+        '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>' +
+          '<circle cx="12" cy="12" r="3"/></svg>' +
+        '<p>填写目标后点击扫描</p>' +
+      '</div>';
+  }
+
+  // ---------- 双击编辑备注 ----------
+
+  function findPortItem(port) {
+    var pool = (state.result && state.result.openPorts) || [];
+    var i;
+    for (i = 0; i < pool.length; i++) {
+      if (pool[i].port === port) return pool[i];
+    }
+    for (i = 0; i < state.history.length; i++) {
+      var ops = state.history[i].openPorts || [];
+      for (var k = 0; k < ops.length; k++) {
+        if (ops[k].port === port) return ops[k];
+      }
+    }
+    return null;
+  }
+
+  function startEdit(chip) {
+    if (!chip || chip.querySelector('.chip-edit')) return;
+
+    var port = Number(chip.getAttribute('data-port'));
+    var custom = state.labels[port] || '';
+    var item = findPortItem(port);
+    var placeholder = (item && item.service) ? item.service : '备注';
+
+    var input = document.createElement('input');
+    input.className = 'chip-edit';
+    input.type = 'text';
+    input.maxLength = 32;
+    input.value = custom;
+    input.placeholder = placeholder;
+    input.style.width = Math.max(58, Math.min(200, (String(custom || placeholder).length + 4) * 9)) + 'px';
+
+    var finished = false;
+
+    function commit(save) {
+      if (finished) return;
+      finished = true;
+
+      if (!save) { rerenderAll(); return; }
+
+      var value = input.value.trim().slice(0, 32);
+      if (value === custom) { rerenderAll(); return; }
+
+      api('/labels/set', {
+        method: 'POST',
+        body: JSON.stringify({ port: port, label: value })
+      }).then(function (d) {
+        if (d && d.ok) {
+          state.labels = d.labels || {};
+          rerenderAll();
+          toast(value ? (port + ' 备注已保存为「' + value + '」') : (port + ' 已恢复默认名称'));
+        } else {
+          rerenderAll();
+          toast((d && d.error) || '备注保存失败');
+        }
+      }).catch(function () {
+        rerenderAll();
+        toast('备注保存失败');
+      });
+    }
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+      e.stopPropagation();
+    });
+    input.addEventListener('blur', function () { commit(true); });
+    input.addEventListener('click', function (e) { e.stopPropagation(); });
+    input.addEventListener('dblclick', function (e) { e.stopPropagation(); });
+
+    chip.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+
+  function rerenderAll() {
+    if (state.result) renderDone(state.result);
+    if (drawer.classList.contains('open')) renderHistory();
+  }
+
+  resultBody.addEventListener('dblclick', function (e) {
+    var chip = e.target.closest ? e.target.closest('.chip') : null;
+    if (!chip) return;
+    e.preventDefault();
+    startEdit(chip);
+  });
+
+  drawerBody.addEventListener('dblclick', function (e) {
+    var chip = e.target.closest ? e.target.closest('.chip') : null;
+    if (!chip) return;
+    e.preventDefault();
+    startEdit(chip);
+  });
+
+  // ---------- 扫描 ----------
+
+  function startScan() {
+    if (state.scanning) return;
+
+    var target = inputTarget.value.trim();
+    var ports = inputPorts.value.trim();
+
+    state.scanning = true;
+    btnScan.disabled = true;
+    btnScan.textContent = '扫描中…';
+    btnCopy.disabled = true;
+    state.result = null;
+    hintTarget.className = 'hint';
+
+    api('/scan', { method: 'POST', body: JSON.stringify({ target: target, ports: ports }) })
+      .then(function (data) {
+        if (!data || !data.ok) throw new Error((data && data.error) || '创建扫描任务失败');
+        subscribe(data.taskId, data.total);
+      })
+      .catch(function (err) {
+        finishScan();
+        hintTarget.className = 'hint warn';
+        hintTarget.textContent = err.message || '扫描失败';
+      });
+  }
+
+  function subscribe(taskId, total) {
+    var es = new EventSource(API + '/events?id=' + encodeURIComponent(taskId));
+    state.es = es;
+
+    renderScanning(0, total, 0);
+
+    es.addEventListener('progress', function (ev) {
+      var d = JSON.parse(ev.data);
+      renderScanning(d.scanned, d.total, d.openCount);
+    });
+
+    es.addEventListener('done', function (ev) {
+      var d = JSON.parse(ev.data);
+      es.close();
+      state.es = null;
+      finishScan();
+      if (d.labels) state.labels = d.labels;
+      renderDone(d.record);
+      loadHistory(true);
+      showModal('扫描完成，已保存扫描记录');
+    });
+
+    es.addEventListener('fail', function (ev) {
+      var d = JSON.parse(ev.data);
+      es.close();
+      state.es = null;
+      finishScan();
+      hintTarget.className = 'hint warn';
+      hintTarget.textContent = d.error || '扫描异常';
+      renderIdle();
+    });
+
+    es.onerror = function () {
+      if (state.es !== es) return;
+      try { es.close(); } catch (e) { /* ignore */ }
+      state.es = null;
+      finishScan();
+      // 兜底：万一没收到终态事件，回读历史记录把最近一次结果补上，
+      // 绝不能让界面停在「正在扫描」。
+      loadHistory(false).then(function (items) {
+        if (state.result) return;
+        if (items && items.length) {
+          renderDone(items[0]);
+        } else {
+          renderIdle();
+          hintTarget.className = 'hint warn';
+          hintTarget.textContent = '扫描连接中断，请重试';
+        }
+      });
+    };
+  }
+
+  function finishScan() {
+    state.scanning = false;
+    btnScan.disabled = false;
+    btnScan.textContent = '扫描';
+  }
+
+  btnScan.addEventListener('click', startScan);
+
+  [inputTarget, inputPorts].forEach(function (el) {
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !state.scanning) { e.preventDefault(); startScan(); }
+    });
+  });
+
+  // ---------- 本机 IP 检测 ----------
+
+  function loadNetwork() {
+    api('/net').then(function (data) {
+      if (!data || !data.ok) throw new Error('网段检测失败');
+      state.network = data.network;
+
+      // 灰色占位显示本机服务器 IP（已排除 docker / veth 等虚拟网卡）
+      inputTarget.placeholder = data.network.ip;
+
+      if (!inputTarget.value) {
+        hintTarget.className = 'hint';
+        hintTarget.textContent = '已识别本机 IP ' + data.network.ip +
+          '（网段 ' + data.network.cidr + '）　留空则扫描本机 IP';
+      }
+    }).catch(function () {
+      inputTarget.placeholder = '192.168.5.7';
+    });
+  }
+
+  function loadLabels() {
+    return api('/labels').then(function (d) {
+      state.labels = (d && d.labels) || {};
+    }).catch(function () { state.labels = {}; });
+  }
+
+  // ---------- 历史抽屉 ----------
+
+  function fmtTime(iso) {
+    try {
+      var d = new Date(iso);
+      var p = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+             ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    } catch (e) { return iso; }
+  }
+
+  function renderHistory() {
+    if (!state.history.length) {
+      drawerBody.innerHTML =
+        '<div class="empty-state">' +
+          '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+            '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
+          '<p>暂无扫描记录</p>' +
+        '</div>';
+      return;
+    }
+
+    drawerBody.innerHTML = state.history.map(function (item) {
+      var count = item.openPorts ? item.openPorts.length : 0;
+      return '<div class="hist-item" data-id="' + esc(item.id) + '">' +
+        '<div class="hist-row">' +
+          '<div class="hist-main">' +
+            '<div class="hist-target">' + esc(item.target) + '</div>' +
+            '<div class="hist-ports">' + chipsHtml(item.openPorts) + '</div>' +
+            '<div class="hist-time">' + fmtTime(item.time) +
+              '　范围 ' + esc(item.portSpec) +
+              '　命中 ' + count +
+              '　耗时 ' + (item.elapsedMs / 1000).toFixed(1) + 's</div>' +
+          '</div>' +
+          '<div class="hist-actions">' +
+            '<button class="mini-btn" data-act="copy" title="复制"><svg width="15" height="15" ' +
+              'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+              'stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" ' +
+              'rx="2.4"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+            '<button class="mini-btn" data-act="reuse" title="回填"><svg width="15" height="15" ' +
+              'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+              'stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>' +
+              '<path d="M3 3v5h5"/></svg></button>' +
+            '<button class="mini-btn danger" data-act="del" title="删除"><svg width="15" height="15" ' +
+              'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+              'stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg></button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function loadHistory(keepOpen) {
+    return api('/history').then(function (data) {
+      state.history = (data && data.items) || [];
+      if (keepOpen) renderHistory();
+      return state.history;
+    }).catch(function () {
+      state.history = [];
+      if (keepOpen) renderHistory();
+      return [];
+    });
+  }
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    drawerMask.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    renderHistory();
+    loadHistory(true);
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    drawerMask.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+  }
+
+  $('btnHistory').addEventListener('click', openDrawer);
+  $('btnCloseDrawer').addEventListener('click', closeDrawer);
+  drawerMask.addEventListener('click', closeDrawer);
+
+  drawerBody.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!btn) return;
+
+    var itemEl = btn.closest('.hist-item');
+    var id = itemEl ? itemEl.getAttribute('data-id') : '';
+    var act = btn.getAttribute('data-act');
+    var item = null;
+    for (var i = 0; i < state.history.length; i++) {
+      if (state.history[i].id === id) { item = state.history[i]; break; }
+    }
+    if (!item) return;
+
+    if (act === 'del') {
+      api('/history/delete', { method: 'POST', body: JSON.stringify({ id: id }) })
+        .then(function (d) {
+          state.history = (d && d.items) || [];
+          renderHistory();
+          toast('已删除该记录');
+        });
+      return;
+    }
+
+    if (act === 'reuse') {
+      inputTarget.value = item.target;
+      inputPorts.value = (item.portSpec || '').indexOf('（') > -1 ? '' : (item.portSpec || '');
+      state.result = item;
+      renderDone(item);
+      closeDrawer();
+      toast('已回填该次扫描参数');
+      return;
+    }
+
+    if (act === 'copy') {
+      copyText(buildCopyText(item)).then(function (ok) { toast(ok ? '已复制' : '复制失败'); });
+    }
+  });
+
+  $('btnClearAll').addEventListener('click', function () {
+    api('/history/clear', { method: 'POST', body: '{}' }).then(function (d) {
+      state.history = (d && d.items) || [];
+      renderHistory();
+      toast('已清空扫描记录');
+    });
+  });
+
+  // ---------- 弹窗 / 返回 ----------
+
+  $('modalOk').addEventListener('click', hideModal);
+  modalMask.addEventListener('click', function (e) {
+    if (e.target === modalMask) hideModal();
+  });
+
+  $('btnBack').addEventListener('click', function () {
+    if (window.history.length > 1) { window.history.back(); return; }
+    if (window.parent !== window) { try { window.parent.history.back(); return; } catch (e) { /* ignore */ } }
+    toast('已在最顶层页面');
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (!modalMask.hidden) { hideModal(); return; }
+      if (drawer.classList.contains('open')) closeDrawer();
+    }
+  });
+
+  window.addEventListener('beforeunload', function () {
+    if (state.es) { try { state.es.close(); } catch (e) { /* ignore */ } }
+  });
+
+  // ---------- 启动 ----------
+
+  loadNetwork();
+  loadLabels().then(function () { loadHistory(false); });
+})();
+</script>
+</body>
+</html>

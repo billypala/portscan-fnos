@@ -1,0 +1,13 @@
+#!/bin/bash
+
+### Post-install: ensure the scan history data directory exists.
+
+DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+
+if [ -z "$DATA_DIR" ] || [ ! -d "$DATA_DIR" ]; then
+  DATA_DIR="${TRIM_PKGVAR}/data"
+fi
+
+mkdir -p "$DATA_DIR" 2>/dev/null
+
+exit 0

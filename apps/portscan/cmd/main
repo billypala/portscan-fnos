@@ -1,0 +1,118 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_PKGVAR}/app.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+
+export PATH=/var/apps/nodejs_v22/target/bin:$PATH
+
+APP_DIR="${TRIM_APPDEST}/server"
+DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+GATEWAY_PREFIX="/app/portscan"
+SOCKET_PATH="${TRIM_APPDEST}/app.sock"
+
+# 未声明或未挂载 data-share 时回退到运行时目录
+if [ -z "$DATA_DIR" ] || [ ! -d "$DATA_DIR" ]; then
+  DATA_DIR="${TRIM_PKGVAR}/data"
+  log_msg "WARN: data-share unavailable, fallback to ${DATA_DIR}"
+fi
+
+mkdir -p "$DATA_DIR" 2>/dev/null
+
+log_msg() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+check_process() {
+  local pid="$1"
+  kill -0 "$pid" 2>/dev/null
+}
+
+status_app() {
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid="$(head -n 1 "$PID_FILE" | tr -d '[:space:]')"
+    if [ -n "$pid" ] && check_process "$pid"; then
+      return 0
+    fi
+    rm -f "$PID_FILE"
+  fi
+  return 1
+}
+
+start_app() {
+  if status_app; then
+    return 0
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    log_msg "ERROR: node runtime not found"
+    echo "未找到 Node.js 运行时，请先在应用中心安装 nodejs_v22" > "$TRIM_TEMP_LOGFILE"
+    return 1
+  fi
+
+  log_msg "Starting PortScan..."
+
+  rm -f "$SOCKET_PATH"
+
+  cd "$APP_DIR" || return 1
+
+  PORT=5083 \
+  SOCKET_PATH="$SOCKET_PATH" \
+  GATEWAY_PREFIX="$GATEWAY_PREFIX" \
+  DATA_DIR="$DATA_DIR" \
+  node server.js >> "$LOG_FILE" 2>&1 &
+
+  echo "$!" > "$PID_FILE"
+  log_msg "Started with pid $(cat "$PID_FILE")"
+}
+
+stop_app() {
+  log_msg "Stopping PortScan..."
+
+  if [ ! -f "$PID_FILE" ]; then
+    return 0
+  fi
+
+  local pid
+  pid="$(head -n 1 "$PID_FILE" | tr -d '[:space:]')"
+
+  if [ -z "$pid" ] || ! check_process "$pid"; then
+    rm -f "$PID_FILE"
+    rm -f "$SOCKET_PATH"
+    return 0
+  fi
+
+  kill -TERM "$pid" 2>> "$LOG_FILE" || true
+
+  local count=0
+  while check_process "$pid" && [ "$count" -lt 10 ]; do
+    sleep 1
+    count=$((count + 1))
+  done
+
+  if check_process "$pid"; then
+    kill -KILL "$pid" 2>> "$LOG_FILE" || true
+  fi
+
+  rm -f "$PID_FILE"
+  rm -f "$SOCKET_PATH"
+}
+
+case "$1" in
+  start)
+    start_app
+    ;;
+  stop)
+    stop_app
+    ;;
+  status)
+    if status_app; then
+      exit 0
+    fi
+    exit 3
+    ;;
+  *)
+    echo "Unknown command: $1" > "$TRIM_TEMP_LOGFILE"
+    exit 1
+    ;;
+esac

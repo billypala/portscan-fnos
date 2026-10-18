@@ -1,0 +1,14 @@
+{
+  "name": "portscan-fnos-project",
+  "version": "1.0.0",
+  "private": true,
+  "description": "fnOS 原生端口扫描应用（Native fpk）",
+  "scripts": {
+    "start": "node src/server.js",
+    "icons": "node scripts/make-icons.js",
+    "build": "node scripts/build.js",
+    "test": "node scripts/test-clipboard.js && node scripts/e2e-test.js 127.0.0.1 \"18000-18100,443,80,8080\" 1000"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

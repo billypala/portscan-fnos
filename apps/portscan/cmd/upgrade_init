@@ -1,0 +1,5 @@
+#!/bin/bash
+
+### Called before the application is upgraded.
+
+exit 0

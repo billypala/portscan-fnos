@@ -1,0 +1,23 @@
+# 本地测试数据（扫描历史 / 端口备注）
+.testdata/
+
+# 构建中间产物
+*.tgz
+.v-*.js
+.v-*.tgz
+.verify*
+
+# 截图脚本输出（README 用图已固定在 assets/）
+v2-*.png
+shot-*.png
+
+# 编辑器 / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 日志
+*.log
+npm-debug.log*

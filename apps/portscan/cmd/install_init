@@ -1,0 +1,5 @@
+#!/bin/bash
+
+### Install hook: no pre-install preparation needed.
+
+exit 0
