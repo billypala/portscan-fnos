@@ -43,7 +43,9 @@ Leave empty for all ports `1-65535`, or use comma and dash mixes: `80,443,8000-8
 
 ### Port boxes with editable labels
 
-Every open port is rendered as its own box with its well-known service name. **Double-click any box to attach your own note** — it then displays as `21(FTP)`. Notes are persisted per user, applied to every future scan and to history entries, and visually marked with a dashed border. Clear the text to restore the built-in name.
+Every open port is rendered as its own box with its well-known service name. **Double-click any box to attach your own note** — it then displays as `21(FTP)`.
+
+Notes are keyed by **`host:port`**, not by port alone: port 5000 on one machine is often something completely different from port 5000 on another, so a note set on `192.168.5.1:5000` never leaks onto `192.168.5.5:5000`. Notes persist across scans, apply to history entries too, are visually marked with a dashed border, and are cleared by emptying the text.
 
 ### Real-time progress
 
@@ -142,6 +144,7 @@ portscan-fnos/
 | Runtime | `install_dep_apps=nodejs_v22`; Node is not bundled |
 | Access | fnOS unified gateway at `/app/portscan` over a Unix Socket; no `service_port` |
 | User isolation | History and port notes are stored per `X-Trim-Userid` |
+| Note key | `host:port` — the same port on two hosts keeps two independent notes |
 | Privilege | `run-as=package`, least privilege |
 | Scanning | `net.connect` pool, 512 concurrent, 800 ms timeout |
 | Clipboard | Native API → hidden `textarea` + `execCommand` → manual prompt |
@@ -150,6 +153,11 @@ portscan-fnos/
 | Host cap | 4096 hosts, to prevent accidental huge sweeps |
 
 ## Changelog
+
+### 1.0.2
+
+- Fix: port notes were keyed by port number alone, so a note set on one host appeared on every host with the same port. Notes are now keyed by `host:port` and are fully isolated per IP. Legacy port-only entries are discarded.
+- Change: App Center developer and publisher now show `billypala` with a link to the GitHub profile (`maintainer_url` / `distributor_url`).
 
 ### 1.0.1
 

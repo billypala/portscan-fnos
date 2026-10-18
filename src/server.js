@@ -134,16 +134,28 @@ function labelsFile(userId) {
   return path.join(labelsDir(), `${userId}.json`);
 }
 
+// 备注键 = "<host>:<port>"。
+// 同一个端口在不同主机上作用完全不同（5000 在一台是 UPNP，在另一台可能是你自己的服务），
+// 因此绝不能只按端口号全局共享备注。
+function labelKey(host, port) {
+  return `${host}:${port}`;
+}
+
+const LABEL_KEY_RE = /^([^\s:]+):(\d{1,5})$/;
+
 function loadLabels(userId) {
   try {
     const parsed = JSON.parse(fs.readFileSync(labelsFile(userId), 'utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const out = {};
     for (const [k, v] of Object.entries(parsed)) {
-      const port = Number(k);
+      const m = LABEL_KEY_RE.exec(k);
+      // 旧版（v1.0.1）是按纯端口号存的，语义已不成立 → 直接丢弃，不做跨主机继承
+      if (!m) continue;
+      const port = Number(m[2]);
       if (!Number.isInteger(port) || port < 1 || port > 65535) continue;
       const label = String(v == null ? '' : v).trim().slice(0, 32);
-      if (label) out[port] = label;
+      if (label) out[labelKey(m[1], port)] = label;
     }
     return out;
   } catch {
@@ -159,21 +171,22 @@ function saveLabels(userId, labels) {
   return labels;
 }
 
-function setLabel(userId, port, label) {
+function setLabel(userId, host, port, label) {
   const labels = loadLabels(userId);
+  const key = labelKey(host, port);
   const text = String(label == null ? '' : label).trim().slice(0, 32);
-  if (text) labels[port] = text;
-  else delete labels[port];   // 传空 = 恢复内置服务名
+  if (text) labels[key] = text;
+  else delete labels[key];   // 传空 = 只清掉这一台主机这一端口的备注
   return saveLabels(userId, labels);
 }
 
-// 把用户备注叠加到扫描结果上（备注优先于内置服务名）
+// 把用户备注叠加到扫描结果上（备注优先于内置服务名，按 host:port 精确匹配）
 function applyLabels(openPorts, labels) {
   return openPorts.map((it) => ({
     host: it.host,
     port: it.port,
     service: it.service || null,
-    label: labels[it.port] || null
+    label: labels[labelKey(it.host, it.port)] || null
   }));
 }
 
@@ -281,11 +294,18 @@ route('POST', `${GATEWAY_PREFIX}/api/labels/set`, async (req, res, ctx) => {
   } catch (err) {
     return sendJson(res, 400, { ok: false, error: err.message });
   }
+
+  const host = String(body.host || '').trim();
   const port = Number(body.port);
+
+  if (!host) {
+    return sendJson(res, 400, { ok: false, error: '缺少主机地址（备注按 IP + 端口 分别保存）' });
+  }
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     return sendJson(res, 400, { ok: false, error: '端口号非法（1-65535）' });
   }
-  const labels = setLabel(ctx.userId, port, body.label);
+
+  const labels = setLabel(ctx.userId, host, port, body.label);
   sendJson(res, 200, { ok: true, labels });
 });
 

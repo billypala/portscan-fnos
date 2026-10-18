@@ -502,9 +502,14 @@
 
   // ---------- 端口标签 ----------
 
-  // 显示名：用户备注优先，其次内置服务名
+  // 备注键 = host:port。同一端口在不同主机上作用不同，必须分开存。
+  function labelKeyOf(host, port) {
+    return host + ':' + port;
+  }
+
+  // 显示名：该主机该端口的用户备注优先，其次内置服务名
   function portName(item) {
-    var custom = state.labels[item.port];
+    var custom = state.labels[labelKeyOf(item.host, item.port)];
     if (custom) return { text: custom, custom: true };
     if (item.service) return { text: item.service, custom: false };
     return { text: '', custom: false };
@@ -514,7 +519,7 @@
     var n = portName(item);
     return '<button type="button" class="chip' + (n.custom ? ' custom' : '') + '"' +
       ' data-port="' + item.port + '" data-host="' + esc(item.host) + '"' +
-      ' title="双击可修改该端口备注">' +
+      ' title="双击可修改 ' + esc(item.host) + ':' + item.port + ' 的备注（仅对本机生效）">' +
       '<span class="num">' + item.port + '</span>' +
       (n.text ? '<span class="svc">(' + esc(n.text) + ')</span>' : '') +
       '</button>';
@@ -600,7 +605,7 @@
     resultBody.innerHTML =
       '<div class="scanning">正在扫描的端口</div>' +
       '<div style="margin-top:10px">' + chipsHtml(record.openPorts) + '</div>' +
-      (count ? '<div class="chips-hint">双击端口方框可修改备注（如把 21 标注为「FTP」），自动保存并应用到所有扫描</div>' : '') +
+      (count ? '<div class="chips-hint">双击端口方框可为「该主机 + 该端口」单独修改备注（如 192.168.5.1 的 21 标注为「FTP」），不会影响其他 IP 的同号端口</div>' : '') +
       '<div class="meta">' +
         '<span>目标 ' + esc(record.target) + '</span>' +
         '<span>范围 ' + esc(record.portSpec) + '</span>' +
@@ -624,16 +629,16 @@
 
   // ---------- 双击编辑备注 ----------
 
-  function findPortItem(port) {
+  function findPortItem(host, port) {
     var pool = (state.result && state.result.openPorts) || [];
     var i;
     for (i = 0; i < pool.length; i++) {
-      if (pool[i].port === port) return pool[i];
+      if (pool[i].port === port && pool[i].host === host) return pool[i];
     }
     for (i = 0; i < state.history.length; i++) {
       var ops = state.history[i].openPorts || [];
       for (var k = 0; k < ops.length; k++) {
-        if (ops[k].port === port) return ops[k];
+        if (ops[k].port === port && ops[k].host === host) return ops[k];
       }
     }
     return null;
@@ -643,8 +648,9 @@
     if (!chip || chip.querySelector('.chip-edit')) return;
 
     var port = Number(chip.getAttribute('data-port'));
-    var custom = state.labels[port] || '';
-    var item = findPortItem(port);
+    var host = chip.getAttribute('data-host') || '';
+    var custom = state.labels[labelKeyOf(host, port)] || '';
+    var item = findPortItem(host, port);
     var placeholder = (item && item.service) ? item.service : '备注';
 
     var input = document.createElement('input');
@@ -653,6 +659,7 @@
     input.maxLength = 32;
     input.value = custom;
     input.placeholder = placeholder;
+    input.title = host + ':' + port;
     input.style.width = Math.max(58, Math.min(200, (String(custom || placeholder).length + 4) * 9)) + 'px';
 
     var finished = false;
@@ -668,12 +675,14 @@
 
       api('/labels/set', {
         method: 'POST',
-        body: JSON.stringify({ port: port, label: value })
+        body: JSON.stringify({ host: host, port: port, label: value })
       }).then(function (d) {
         if (d && d.ok) {
           state.labels = d.labels || {};
           rerenderAll();
-          toast(value ? (port + ' 备注已保存为「' + value + '」') : (port + ' 已恢复默认名称'));
+          toast(value
+            ? (host + ':' + port + ' 备注已保存为「' + value + '」')
+            : (host + ':' + port + ' 已恢复默认名称'));
         } else {
           rerenderAll();
           toast((d && d.error) || '备注保存失败');

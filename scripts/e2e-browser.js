@@ -75,6 +75,7 @@ function check(name, ok, detail) {
   console.log('=== 3. 双击方框改备注 ===');
   const firstChip = await page.$('#resultBody .chip');
   const firstPort = await firstChip.getAttribute('data-port');
+  const firstHost = await firstChip.getAttribute('data-host');
   await firstChip.dblclick();
   await page.waitForTimeout(250);
 
@@ -97,9 +98,10 @@ function check(name, ok, detail) {
       after && after.text === `${firstPort}(我的自定义服务)`, after ? after.text : 'null');
     check('自定义备注有视觉区分（虚线框）', after && after.custom === true);
 
-    const persisted = await page.evaluate((p) =>
-      fetch('/app/portscan/api/labels').then((r) => r.json()).then((d) => d.labels[p]), firstPort);
-    check('备注已持久化到服务端', persisted === '我的自定义服务', String(persisted));
+    const persisted = await page.evaluate(([h, p]) =>
+      fetch('/app/portscan/api/labels').then((r) => r.json()).then((d) => d.labels[h + ':' + p]),
+      [firstHost, firstPort]);
+    check('备注已持久化到服务端（键为 host:port）', persisted === '我的自定义服务', String(persisted));
 
     await page.screenshot({ path: 'v2-3-saved.png' });
   }
@@ -110,7 +112,7 @@ function check(name, ok, detail) {
   const labelsAfterReload = await page.evaluate(() =>
     fetch('/app/portscan/api/labels').then((r) => r.json()).then((d) => d.labels));
   check('刷新后备注仍存在',
-    !!labelsAfterReload[firstPort] && labelsAfterReload[firstPort] === '我的自定义服务',
+    labelsAfterReload[firstHost + ':' + firstPort] === '我的自定义服务',
     JSON.stringify(labelsAfterReload));
 
   console.log('=== 5. 历史抽屉 ===');
@@ -140,14 +142,14 @@ function check(name, ok, detail) {
   await page.waitForTimeout(400);
 
   console.log('=== 6. 清空备注恢复内置名 ===');
-  const restore = await page.evaluate((p) =>
+  const restore = await page.evaluate(([h, p]) =>
     fetch('/app/portscan/api/labels/set', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ port: Number(p), label: '' })
-    }).then((r) => r.json()), firstPort);
-  check('清空备注后该端口条目被移除',
-    restore && restore.ok && !(restore.labels || {})[firstPort],
+      body: JSON.stringify({ host: h, port: Number(p), label: '' })
+    }).then((r) => r.json()), [firstHost, firstPort]);
+  check('清空备注后该 host:port 条目被移除',
+    restore && restore.ok && !(restore.labels || {})[firstHost + ':' + firstPort],
     JSON.stringify(restore && restore.labels));
 
   console.log('=== 7. 极快扫描不卡住（SSE 晚到回放）===');
@@ -169,7 +171,115 @@ function check(name, ok, detail) {
     fastResult.chips > 0 && !fastResult.stuck, `${fastResult.chips} 个方框`);
   if (fastResult.modal) await page.click('#modalOk');
 
-  console.log('=== 8. 桌面响应式 ===');
+  console.log('=== 8. 跨 IP 备注隔离（核心：同端口不同主机不能串）===');
+  // 用两个不同 host 字符串指向同一台机器：本机 LAN IP 与 127.0.0.1
+  const HOST_A = firstHost;                 // 例如 192.168.5.6
+  const HOST_B = '127.0.0.1';
+  const SHARED_PORT = 5083;
+
+  async function scanAndClose(target, ports) {
+    await page.fill('#inputTarget', target);
+    await page.fill('#inputPorts', String(ports));
+    await page.click('#btnScan');
+    await page.waitForSelector('#modalMask:not([hidden])', { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    if (!(await page.evaluate(() => document.getElementById('modalMask').hidden))) {
+      await page.click('#modalOk');
+      await page.waitForTimeout(300);
+    }
+  }
+
+  // A 主机先扫一次该端口，让历史里留下 A 的记录
+  // 先清掉两个 host 上的残留备注，保证本轮断言可重复
+  await page.evaluate(([ha, hb, p]) => Promise.all([ha, hb].map((h) =>
+    fetch('/app/portscan/api/labels/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: h, port: p, label: '' })
+    }))), [HOST_A, HOST_B, SHARED_PORT]);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(600);
+
+  await page.evaluate(([h, p]) =>
+    fetch('/app/portscan/api/labels/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: h, port: p, label: 'A的主机服务' })
+    }).then((r) => r.json()), [HOST_A, SHARED_PORT]);
+  await scanAndClose(HOST_A, SHARED_PORT);
+
+  const aChip = await page.evaluate(([h, p]) => {
+    const el = document.querySelector(`#resultBody .chip[data-host="${h}"][data-port="${p}"]`);
+    return el ? el.textContent.trim() : null;
+  }, [HOST_A, SHARED_PORT]);
+  check('A 主机显示自己的备注', aChip === `${SHARED_PORT}(A的主机服务)`, String(aChip));
+
+  // 扫 B，该端口不应出现 A 的备注
+  await scanAndClose(HOST_B, SHARED_PORT);
+
+  const bChip = await page.evaluate(([h, p]) => {
+    const el = document.querySelector(`#resultBody .chip[data-host="${h}"][data-port="${p}"]`);
+    return el ? { text: el.textContent.trim(), custom: el.classList.contains('custom') } : null;
+  }, [HOST_B, SHARED_PORT]);
+  console.log('  B 主机同端口方框 =', JSON.stringify(bChip));
+  check('扫 B 时不会带出 A 的备注',
+    bChip && !bChip.custom && !bChip.text.includes('A的主机服务'),
+    bChip ? bChip.text : 'null');
+
+  // 现在给 B 的同一端口设不同备注，两者必须共存不冲突
+  await page.evaluate(([h, p]) =>
+    fetch('/app/portscan/api/labels/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: h, port: p, label: 'B的主机服务' })
+    }).then((r) => r.json()), [HOST_B, SHARED_PORT]);
+
+  const bothLabels = await page.evaluate(() =>
+    fetch('/app/portscan/api/labels').then((r) => r.json()).then((d) => d.labels));
+  check('同一端口在两个 IP 上各自独立保存',
+    bothLabels[`${HOST_A}:${SHARED_PORT}`] === 'A的主机服务' &&
+    bothLabels[`${HOST_B}:${SHARED_PORT}`] === 'B的主机服务',
+    JSON.stringify(bothLabels));
+
+  // 重新渲染后 B 显示自己的备注
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  await scanAndClose(HOST_B, SHARED_PORT);
+  const bRendered = await page.evaluate(([h, p]) => {
+    const el = document.querySelector(`#resultBody .chip[data-host="${h}"][data-port="${p}"]`);
+    return el ? el.textContent.trim() : null;
+  }, [HOST_B, SHARED_PORT]);
+  check('B 渲染自己的备注而非 A 的',
+    bRendered === `${SHARED_PORT}(B的主机服务)`, String(bRendered));
+
+  // 历史抽屉里，A 与 B 各自的记录显示各自备注
+  await page.click('#btnHistory');
+  await page.waitForTimeout(800);
+  const histByHost = await page.evaluate(([ha, hb, p]) => {
+    const pick = (host) => {
+      const items = Array.from(document.querySelectorAll('.hist-item'));
+      const out = [];
+      for (const it of items) {
+        const el = it.querySelector(`.chip[data-host="${host}"][data-port="${p}"]`);
+        if (el) out.push(el.textContent.trim());
+      }
+      return out;
+    };
+    return { a: pick(ha), b: pick(hb) };
+  }, [HOST_A, HOST_B, SHARED_PORT]);
+  console.log('  历史 A:', JSON.stringify(histByHost.a), ' 历史 B:', JSON.stringify(histByHost.b));
+  check('历史里 A 的记录显示 A 的备注',
+    histByHost.a.length > 0 && histByHost.a.every((t) => t.includes('A的主机服务')),
+    JSON.stringify(histByHost.a));
+  check('历史里 B 的记录显示 B 的备注（不串）',
+    histByHost.b.length > 0 && histByHost.b.every((t) => t.includes('B的主机服务') && !t.includes('A的')),
+    JSON.stringify(histByHost.b));
+
+  await page.screenshot({ path: 'v2-6-host-isolation.png' });
+  await page.click('#btnCloseDrawer');
+  await page.waitForTimeout(400);
+
+  console.log('=== 9. 桌面响应式 ===');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'v2-5-desktop.png' });
