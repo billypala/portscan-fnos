@@ -71,7 +71,9 @@ Adapts from phone-width to desktop-width, and follows `prefers-color-scheme`.
 
 ## Installation
 
-Download `publish/portscan.fpk` and install it manually from **App Center → Manual Install** on your fnOS device.
+Download `portscan.fpk` from the [latest release](https://github.com/billypala/portscan-fnos/releases/latest) and install it manually from **App Center → Manual Install** on your fnOS device.
+
+A copy is also kept at [`publish/portscan.fpk`](publish/portscan.fpk) in this repository.
 
 Requirements: fnOS ≥ 1.2.0 and the `nodejs_v22` runtime (available in App Center; fnpack resolves the dependency automatically).
 
